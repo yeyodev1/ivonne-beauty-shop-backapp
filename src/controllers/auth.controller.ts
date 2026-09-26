@@ -3,6 +3,22 @@ import { AuthRequest } from "../types/AuthRequest";
 import { CustomError } from "../errors/customError.error";
 import * as authService from "../services/auth.service";
 
+/** POST /api/auth/register — body: { name, email, password, phone } */
+export async function register(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { name, email, password, phone } = req.body ?? {};
+    const result = await authService.register({
+      name: String(name ?? ""),
+      email: String(email ?? ""),
+      password: String(password ?? ""),
+      phone: String(phone ?? ""),
+    });
+    res.status(201).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
 /** POST /api/auth/login — body: { email, password } */
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
@@ -35,6 +51,18 @@ export async function changePassword(req: AuthRequest, res: Response, next: Next
       String(current ?? ""),
       String(nueva ?? ""),
     );
+    res.status(200).json({ user });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** PUT /api/auth/profile — body: { name, phone } */
+export async function updateProfile(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    if (!req.user) throw new CustomError("No autorizado", 401);
+    const { name, phone } = req.body ?? {};
+    const user = await authService.updateProfile(req.user.userId, { name, phone });
     res.status(200).json({ user });
   } catch (error) {
     next(error);
