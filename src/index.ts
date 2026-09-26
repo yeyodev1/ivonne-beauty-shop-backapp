@@ -2,11 +2,14 @@ import "dotenv/config";
 import { env } from "./config/env";
 import { dbConnect } from "./config/mongo";
 import { createApp } from "./app";
-import { seedAdmin } from "./services/auth.service";
+import { seedAdmin, seedDemoCustomer } from "./services/auth.service";
+import { ensureSettings } from "./services/settings.service";
 
 async function main() {
   await dbConnect();
   await seedAdmin();
+  await seedDemoCustomer();
+  await ensureSettings();
 
   const { server } = createApp();
 
