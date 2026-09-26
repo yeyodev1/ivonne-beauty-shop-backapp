@@ -13,7 +13,9 @@
     "compile": "tsc --watch",
     "start": "node dist/index.js",
     "seed:admin": "ts-node-dev --transpile-only src/scripts/seed-admin.ts",
-    "format": "prettier --write 'src/**/*.{ts,json,md}' 'api/**/*.ts'"
+    "format": "prettier --write 'src/**/*.{ts,json,md}' 'api/**/*.ts'",
+    "seed:customer": "ts-node-dev --transpile-only src/scripts/seed-customer.ts",
+    "seed:catalog": "ts-node-dev --transpile-only src/scripts/seed-catalog.ts"
   },
   "dependencies": {
     "axios": "^1.7.9",
