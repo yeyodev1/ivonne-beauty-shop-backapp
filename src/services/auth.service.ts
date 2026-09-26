@@ -112,6 +112,85 @@ export async function createUser(input: {
   return sanitize(user);
 }
 
+/** Registro público de clientes. Devuelve la sesión ya iniciada. */
+export async function register(input: {
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+}): Promise<{ token: string; user: SessionUser }> {
+  requireDb();
+  const name = input.name.trim();
+  const email = input.email.toLowerCase().trim();
+  if (!name) throw new CustomError("Escribe tu nombre", 400);
+  if (!EMAIL.test(email)) throw new CustomError("Correo inválido", 400);
+
+  if (await User.exists({ email })) {
+    throw new CustomError("Ya existe una cuenta con ese correo", 409);
+  }
+
+  const created = await createUser({
+    email,
+    password: input.password,
+    name: name.slice(0, 120),
+    phone: input.phone.trim().slice(0, 30),
+    accountType: "customer",
+  });
+  const token = signToken({
+    _id: created.id,
+    email: created.email,
+    accountType: created.accountType,
+  });
+  return { token, user: created };
+}
+
+export async function updateProfile(
+  id: string,
+  input: { name?: unknown; phone?: unknown },
+): Promise<SessionUser> {
+  requireDb();
+  const user = await User.findById(id);
+  if (!user) throw new CustomError("Usuario no encontrado", 404);
+
+  if (input.name !== undefined) {
+    const name = String(input.name ?? "").trim();
+    if (!name) throw new CustomError("Escribe tu nombre", 400);
+    user.name = name.slice(0, 120);
+  }
+  if (input.phone !== undefined) {
+    user.phone = String(input.phone ?? "")
+      .trim()
+      .slice(0, 30);
+  }
+
+  await user.save();
+  return sanitize(user);
+}
+
+/**
+ * Crea la cuenta de cliente demo (DEMO_CUSTOMER_*) si no existe.
+ * Igual que seedAdmin: si ya está, no se toca la contraseña.
+ */
+export async function seedDemoCustomer(): Promise<void> {
+  if (!isConnected()) return;
+  if (!env.DEMO_CUSTOMER_EMAIL || !env.DEMO_CUSTOMER_PASSWORD) return;
+
+  try {
+    const existing = await User.findOne({ email: env.DEMO_CUSTOMER_EMAIL });
+    if (existing) return;
+
+    await User.create({
+      email: env.DEMO_CUSTOMER_EMAIL,
+      password: env.DEMO_CUSTOMER_PASSWORD,
+      name: "Cliente Demo",
+      accountType: "customer",
+    });
+    console.log(`[auth] cuenta de cliente demo creada: ${env.DEMO_CUSTOMER_EMAIL}`);
+  } catch (error) {
+    console.error("[auth] no se pudo crear la cuenta de cliente demo:", error);
+  }
+}
+
 /**
  * Crea la cuenta de administración si todavía no existe.
  *
