@@ -42,4 +42,8 @@ export const env = {
   CLOUDINARY_API_KEY: optional("CLOUDINARY_API_KEY", ""),
   CLOUDINARY_API_SECRET: optional("CLOUDINARY_API_SECRET", ""),
   CRON_SECRET: optional("CRON_SECRET", ""),
+  PAYPHONE_TOKEN: optional("PAYPHONE_TOKEN", ""),
+  PAYPHONE_STORE_ID: optional("PAYPHONE_STORE_ID", ""),
+  DEMO_CUSTOMER_EMAIL: optional("DEMO_CUSTOMER_EMAIL", "").toLowerCase(),
+  DEMO_CUSTOMER_PASSWORD: optional("DEMO_CUSTOMER_PASSWORD", ""),
 } as const;
