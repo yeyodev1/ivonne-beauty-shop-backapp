@@ -7,6 +7,7 @@ import * as categoryController from "../controllers/category.controller";
 import * as orderController from "../controllers/order.controller";
 import * as productController from "../controllers/product.controller";
 import * as settingsController from "../controllers/settings.controller";
+import * as userController from "../controllers/user.controller";
 
 const router = Router();
 
@@ -37,6 +38,10 @@ router.post("/categories/:id/image", uploadMiddleware.single("image"), categoryC
 router.get("/orders", orderController.listAdmin);
 router.get("/orders/:id", orderController.getAdminById);
 router.patch("/orders/:id/status", orderController.updateStatus);
+
+router.get("/users", userController.list);
+router.post("/users", userController.create);
+router.patch("/users/:id", userController.update);
 
 router.get("/settings", settingsController.getAdmin);
 router.put("/settings", settingsController.update);
