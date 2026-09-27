@@ -33,6 +33,16 @@ export async function mine(req: AuthRequest, res: Response, next: NextFunction) 
   }
 }
 
+/** POST /api/orders/lookup — body: { email, number } */
+export async function lookup(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { email, number } = req.body ?? {};
+    res.status(200).json(await orderService.lookup(email, number));
+  } catch (error) {
+    next(error);
+  }
+}
+
 /** GET /api/orders/by-transaction/:clientTransactionId */
 export async function byTransaction(req: Request, res: Response, next: NextFunction) {
   try {

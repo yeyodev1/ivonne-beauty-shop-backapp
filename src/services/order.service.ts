@@ -283,6 +283,29 @@ export async function getByTransaction(clientTransactionId: string) {
   return { order: toPublic(order) };
 }
 
+/**
+ * Consulta pública de un pedido de invitada: correo + número.
+ * Solo el correo no basta: cualquiera que lo conozca vería dirección y celular.
+ * Acepta el número con o sin prefijo ("IB-000012", "000012" o "12").
+ */
+export async function lookup(email: unknown, number: unknown) {
+  const mail = String(email ?? "").toLowerCase().trim();
+  const digits = String(number ?? "").replace(/\D/g, "");
+  if (!mail || !digits) {
+    throw new CustomError("Escribe tu correo y el número de tu pedido", 400);
+  }
+
+  const order = await Order.findOne({
+    number: `IB-${digits.slice(-6).padStart(6, "0")}`,
+    "customer.email": mail,
+  }).select("-payphone");
+  // Mismo mensaje si el número existe con otro correo: no se filtran pedidos ajenos.
+  if (!order) {
+    throw new CustomError("No encontramos un pedido con ese correo y ese número", 404);
+  }
+  return { order: toPublic(order) };
+}
+
 /** Pedidos del usuario, incluidos los que hizo como invitado con el mismo correo. */
 export async function listMine(userId: string) {
   const user = await User.findById(userId).select("email").lean();

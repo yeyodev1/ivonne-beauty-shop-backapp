@@ -7,6 +7,7 @@ const router = Router();
 
 router.post("/", optionalAuthMiddleware, orderController.create);
 router.post("/confirm", orderController.confirm);
+router.post("/lookup", orderController.lookup);
 router.get("/mine", authMiddleware, orderController.mine);
 router.get("/by-transaction/:clientTransactionId", orderController.byTransaction);
 
