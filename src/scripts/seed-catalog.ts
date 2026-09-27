@@ -7,7 +7,9 @@
  *
  * Es idempotente: busca por slug del nombre antes de crear, y no vuelve a
  * subir la foto de un producto que ya tiene imágenes. Un producto sin precio
- * queda como borrador para que la tienda lo complete desde el panel.
+ * o sin foto queda como borrador para que la tienda lo complete desde el panel.
+ * Si el JSON repite un nombre (mismo producto en otra presentación), el
+ * segundo toma el slug -2: el orden del archivo lo mantiene estable.
  */
 import "dotenv/config";
 import fs from "fs";
@@ -85,15 +87,18 @@ async function main() {
   let created = 0;
   let updated = 0;
   let drafts = 0;
+  const seen = new Map<string, number>();
 
   for (const item of items) {
-    const slug = slugify(item.name).replace(/^-+|-+$/g, "");
-    if (!slug) continue;
+    const base = slugify(item.name).replace(/^-+|-+$/g, "");
+    if (!base) continue;
+    const repeat = (seen.get(base) ?? 0) + 1;
+    seen.set(base, repeat);
+    const slug = repeat > 1 ? `${base}-${repeat}` : base;
 
     const category = await ensureCategory(item.category || "maquillaje");
     const hasPrice = typeof item.price === "number" && item.price > 0;
     const price = hasPrice ? Math.round((item.price as number) * 100) : 0;
-    if (!hasPrice) drafts += 1;
 
     const fields = {
       name: item.name.trim(),
@@ -109,24 +114,28 @@ async function main() {
       if (!existing.images.length && item.image) {
         existing.images = await uploadCover(path.join(baseDir, item.image), slug);
       }
+      if (!existing.images.length) existing.isPublished = false;
       await existing.save();
       updated += 1;
+      if (!existing.isPublished) drafts += 1;
       continue;
     }
 
     const images = item.image ? await uploadCover(path.join(baseDir, item.image), slug) : [];
+    const publishable = hasPrice && images.length > 0;
+    if (!publishable) drafts += 1;
     await Product.create({
       ...fields,
       slug,
       images,
       stock: defaultStock,
-      isPublished: hasPrice,
+      isPublished: publishable,
       isFeatured: false,
     });
     created += 1;
   }
 
-  console.log(`✔ Creados: ${created} · Actualizados: ${updated} · Borradores sin precio: ${drafts}`);
+  console.log(`✔ Creados: ${created} · Actualizados: ${updated} · Borradores (sin precio o sin foto): ${drafts}`);
   await mongoose.disconnect();
 }
 
