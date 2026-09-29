@@ -60,7 +60,13 @@ export function layout(title: string, body: string): string {
 export interface OrderEmailData {
   number: string;
   customer: { name: string; email: string; phone: string; documentId: string };
-  items: { name: string; brand: string; price: number; quantity: number }[];
+  items: {
+    name: string;
+    brand: string;
+    price: number;
+    quantity: number;
+    shade?: { name: string } | null;
+  }[];
   subtotal: number;
   shippingCost: number;
   total: number;
@@ -92,7 +98,7 @@ function itemsTable(order: OrderEmailData): string {
       (i) => `
       <tr>
         <td style="padding:8px 0;border-bottom:1px solid #f4f4f5">
-          ${escapeHtml(i.name)}${i.brand ? `<br><span style="color:#71717a;font-size:13px">${escapeHtml(i.brand)}</span>` : ""}
+          ${escapeHtml(i.name)}${i.shade?.name ? `<br><span style="color:#71717a;font-size:13px">Tono: ${escapeHtml(i.shade.name)}</span>` : ""}${i.brand ? `<br><span style="color:#71717a;font-size:13px">${escapeHtml(i.brand)}</span>` : ""}
         </td>
         <td style="padding:8px 0;border-bottom:1px solid #f4f4f5;text-align:center">${i.quantity}</td>
         <td style="padding:8px 0;border-bottom:1px solid #f4f4f5;text-align:right">${formatMoney(i.price * i.quantity)}</td>

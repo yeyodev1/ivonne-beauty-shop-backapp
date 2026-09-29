@@ -13,6 +13,12 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 /** Estados que cuentan como venta cobrada. */
 export const PAID_STATUSES: OrderStatus[] = ["paid", "preparing", "shipped", "delivered"];
 
+export interface IOrderItemShade {
+  id: Types.ObjectId;
+  name: string;
+  color: string;
+}
+
 export interface IOrderItem {
   product: Types.ObjectId;
   name: string;
@@ -21,6 +27,7 @@ export interface IOrderItem {
   image: string;
   price: number;
   quantity: number;
+  shade: IOrderItemShade | null;
 }
 
 export interface IOrder {
@@ -44,6 +51,15 @@ export interface IOrder {
   updatedAt?: Date;
 }
 
+const orderItemShadeSchema = new Schema<IOrderItemShade>(
+  {
+    id: { type: Schema.Types.ObjectId, required: true },
+    name: { type: String, required: true },
+    color: { type: String, default: "" },
+  },
+  { _id: false },
+);
+
 const orderItemSchema = new Schema<IOrderItem>(
   {
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
@@ -53,6 +69,7 @@ const orderItemSchema = new Schema<IOrderItem>(
     image: { type: String, default: "" },
     price: { type: Number, required: true },
     quantity: { type: Number, required: true, min: 1 },
+    shade: { type: orderItemShadeSchema, default: null },
   },
   { _id: false },
 );

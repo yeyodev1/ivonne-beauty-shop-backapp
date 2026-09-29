@@ -1,7 +1,7 @@
 import { isValidObjectId } from "mongoose";
 import { CustomError } from "../errors/customError.error";
 import { Category } from "../models/category.model";
-import { IProductImage, Product } from "../models/product.model";
+import { IProductImage, IProductShade, Product } from "../models/product.model";
 import { containsRegex, escapeRegex } from "../utils/escapeRegex";
 import { paginated, parsePagination } from "../utils/pagination";
 import { uniqueSlug } from "../utils/uniqueSlug";
@@ -10,6 +10,8 @@ import { deleteImage, isCloudinaryConfigured, uploadBuffer } from "./cloudinary.
 const PRODUCT_FOLDER = "ivonne-beauty-shop/products";
 const CATEGORY_FIELDS = "name slug description image order isActive";
 export const LOW_STOCK_THRESHOLD = 3;
+const MAX_SHADES = 60;
+const HEX = /^#[0-9a-f]{6}$/i;
 
 const SORTS: Record<string, Record<string, 1 | -1>> = {
   new: { createdAt: -1 },
@@ -166,6 +168,43 @@ function readImages(value: unknown): IProductImage[] {
     .filter((img) => img.url);
 }
 
+/** Conserva el _id de cada tono existente: los carritos abiertos lo referencian. */
+function readShades(value: unknown): IProductShade[] {
+  if (!Array.isArray(value)) throw new CustomError("Los tonos deben ser una lista", 400);
+  if (value.length > MAX_SHADES) {
+    throw new CustomError(`Un producto puede tener hasta ${MAX_SHADES} tonos`, 400);
+  }
+
+  const seen = new Set<string>();
+  return value.map((raw: any) => {
+    const name = String(raw?.name ?? "")
+      .trim()
+      .slice(0, 60);
+    if (!name) throw new CustomError("Cada tono necesita un nombre", 400);
+    const key = name.toLowerCase();
+    if (seen.has(key)) throw new CustomError(`El tono "${name}" está repetido`, 400);
+    seen.add(key);
+
+    const color = String(raw?.color ?? "").trim();
+    const stock = Number(raw?.stock ?? 0);
+    if (!Number.isInteger(stock) || stock < 0) {
+      throw new CustomError(
+        `El stock del tono "${name}" debe ser un entero mayor o igual a 0`,
+        400,
+      );
+    }
+
+    const shade: IProductShade = {
+      name,
+      color: HEX.test(color) ? color.toLowerCase() : "",
+      stock,
+      isActive: raw?.isActive === undefined ? true : Boolean(raw.isActive),
+    };
+    if (raw?._id && isValidObjectId(raw._id)) shade._id = raw._id;
+    return shade;
+  });
+}
+
 async function readFields(input: any, partial: boolean) {
   const data: Record<string, unknown> = {};
   const has = (key: string) => input?.[key] !== undefined;
@@ -218,6 +257,8 @@ async function readFields(input: any, partial: boolean) {
   }
 
   if (has("images")) data.images = readImages(input.images);
+  // El stock del producto lo recalcula el modelo al guardar cuando hay tonos.
+  if (has("shades")) data.shades = readShades(input.shades);
 
   return data;
 }

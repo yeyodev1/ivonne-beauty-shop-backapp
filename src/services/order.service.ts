@@ -65,14 +65,56 @@ function text(value: unknown, max: number): string {
     .slice(0, max);
 }
 
-/** Descuenta stock sin bajar de 0, en una sola operación atómica por producto. */
-async function applyStock(items: { product: unknown; quantity: number }[]): Promise<void> {
+type StockLine = { product: unknown; quantity: number; shade?: { id: unknown } | null };
+
+/** Descuenta stock sin bajar de 0, en una sola operación atómica por línea. */
+async function applyStock(items: StockLine[]): Promise<void> {
   await Promise.all(
-    items.map((item) =>
-      Product.updateOne({ _id: item.product }, [
-        { $set: { stock: { $max: [0, { $subtract: ["$stock", item.quantity] }] } } },
-      ]),
-    ),
+    items.map((item) => {
+      if (!item.shade?.id) {
+        return Product.updateOne({ _id: item.product }, [
+          { $set: { stock: { $max: [0, { $subtract: ["$stock", item.quantity] }] } } },
+        ]);
+      }
+      // Con tono: se descuenta del tono y el stock del producto se vuelve a sumar de los tonos activos.
+      return Product.updateOne({ _id: item.product }, [
+        {
+          $set: {
+            shades: {
+              $map: {
+                input: "$shades",
+                as: "s",
+                in: {
+                  $cond: [
+                    { $eq: ["$$s._id", item.shade.id] },
+                    {
+                      $mergeObjects: [
+                        "$$s",
+                        { stock: { $max: [0, { $subtract: ["$$s.stock", item.quantity] }] } },
+                      ],
+                    },
+                    "$$s",
+                  ],
+                },
+              },
+            },
+          },
+        },
+        {
+          $set: {
+            stock: {
+              $sum: {
+                $map: {
+                  input: { $filter: { input: "$shades", as: "s", cond: "$$s.isActive" } },
+                  as: "s",
+                  in: "$$s.stock",
+                },
+              },
+            },
+          },
+        },
+      ]);
+    }),
   );
 }
 
@@ -88,7 +130,7 @@ export async function createOrder(input: any, userId: string | null) {
   // Antes que nada: sin Payphone no tiene sentido dejar un pedido creado.
   requirePayphone();
 
-  // Líneas: se agrupan por producto para que nadie esquive el tope repitiendo la línea.
+  // Líneas: se agrupan por producto y tono para que nadie esquive el tope repitiendo la línea.
   if (!Array.isArray(input?.items) || input.items.length === 0) {
     throw new CustomError("Tu carrito está vacío", 400);
   }
@@ -98,8 +140,9 @@ export async function createOrder(input: any, userId: string | null) {
   const quantities = new Map<string, number>();
   for (const line of input.items) {
     const productId = String(line?.productId ?? "");
+    const shadeId = String(line?.shadeId ?? "");
     const quantity = Number(line?.quantity);
-    if (!isValidObjectId(productId))
+    if (!isValidObjectId(productId) || (shadeId && !isValidObjectId(shadeId)))
       throw new CustomError("Hay un producto inválido en el carrito", 400);
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY) {
       throw new CustomError(
@@ -107,11 +150,15 @@ export async function createOrder(input: any, userId: string | null) {
         400,
       );
     }
-    quantities.set(productId, (quantities.get(productId) || 0) + quantity);
+    const key = `${productId}:${shadeId}`;
+    quantities.set(key, (quantities.get(key) || 0) + quantity);
   }
   for (const quantity of quantities.values()) {
     if (quantity > MAX_QUANTITY) {
-      throw new CustomError(`Puedes llevar hasta ${MAX_QUANTITY} unidades de cada producto`, 400);
+      throw new CustomError(
+        `Puedes llevar hasta ${MAX_QUANTITY} unidades de cada producto o tono`,
+        400,
+      );
     }
   }
 
@@ -145,18 +192,38 @@ export async function createOrder(input: any, userId: string | null) {
   }
 
   // Productos: precios, nombres y stock salen de la base, nunca del cliente.
-  const products = await Product.find({ _id: { $in: [...quantities.keys()] } }).lean();
+  const productIds = [...new Set([...quantities.keys()].map((key) => key.split(":")[0]))];
+  const products = await Product.find({ _id: { $in: productIds } }).lean();
   const byId = new Map(products.map((p: any) => [String(p._id), p]));
 
-  const items = [...quantities.entries()].map(([productId, quantity]) => {
+  const items = [...quantities.entries()].map(([key, quantity]) => {
+    const [productId, shadeId] = key.split(":");
     const product: any = byId.get(productId);
     if (!product || !product.isPublished) {
       throw new CustomError("Uno de los productos de tu carrito ya no está disponible", 400);
     }
-    if (product.stock <= 0) throw new CustomError(`${product.name} está agotado`, 400);
-    if (product.stock < quantity) {
+
+    const shades: any[] = product.shades || [];
+    let shade: any = null;
+    let stock: number = product.stock;
+    let label: string = product.name;
+    if (shades.length > 0) {
+      if (!shadeId) throw new CustomError(`Elige un tono de ${product.name}`, 400);
+      shade = shades.find((s) => String(s._id) === shadeId);
+      if (!shade || !shade.isActive) {
+        throw new CustomError(
+          `El tono ${shade?.name ? `${shade.name} ` : ""}de ${product.name} ya no está disponible`,
+          400,
+        );
+      }
+      stock = shade.stock;
+      label = `${product.name} (tono ${shade.name})`;
+    }
+
+    if (stock <= 0) throw new CustomError(`${label} está agotado`, 400);
+    if (stock < quantity) {
       throw new CustomError(
-        `Solo quedan ${product.stock} unidad${product.stock === 1 ? "" : "es"} de ${product.name}`,
+        `Solo quedan ${stock} unidad${stock === 1 ? "" : "es"} de ${label}`,
         400,
       );
     }
@@ -168,6 +235,7 @@ export async function createOrder(input: any, userId: string | null) {
       image: product.images?.[0]?.url || "",
       price: product.price,
       quantity,
+      shade: shade ? { id: shade._id, name: shade.name, color: shade.color || "" } : null,
     };
   });
 
@@ -289,7 +357,9 @@ export async function getByTransaction(clientTransactionId: string) {
  * Acepta el número con o sin prefijo ("IB-000012", "000012" o "12").
  */
 export async function lookup(email: unknown, number: unknown) {
-  const mail = String(email ?? "").toLowerCase().trim();
+  const mail = String(email ?? "")
+    .toLowerCase()
+    .trim();
   const digits = String(number ?? "").replace(/\D/g, "");
   if (!mail || !digits) {
     throw new CustomError("Escribe tu correo y el número de tu pedido", 400);

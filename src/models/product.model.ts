@@ -6,6 +6,16 @@ export interface IProductImage {
   publicId: string;
 }
 
+export interface IProductShade {
+  _id?: Types.ObjectId;
+  name: string;
+  // Hex (#c68b6e) para pintar la muestra; "" si no se definió.
+  color: string;
+  stock: number;
+  // Apagado = bloqueado a mano aunque quede stock (p. ej. dejó de traer ese tono).
+  isActive: boolean;
+}
+
 export interface IProduct {
   name: string;
   slug: string;
@@ -16,6 +26,8 @@ export interface IProduct {
   price: number;
   compareAtPrice: number | null;
   images: IProductImage[];
+  shades: IProductShade[];
+  // Con tonos, es la suma del stock de los tonos activos: así "agotado" y "poco stock" siguen igual.
   stock: number;
   isPublished: boolean;
   isFeatured: boolean;
@@ -32,6 +44,14 @@ const productImageSchema = new Schema<IProductImage>(
   { _id: false },
 );
 
+// Con _id propio: el carrito y los pedidos apuntan al tono por id, no por nombre.
+const productShadeSchema = new Schema<IProductShade>({
+  name: { type: String, required: true, trim: true },
+  color: { type: String, default: "" },
+  stock: { type: Number, default: 0, min: 0 },
+  isActive: { type: Boolean, default: true },
+});
+
 const productSchema = new Schema<IProduct>(
   {
     name: { type: String, required: true, trim: true },
@@ -42,6 +62,7 @@ const productSchema = new Schema<IProduct>(
     price: { type: Number, required: true, min: 0 },
     compareAtPrice: { type: Number, default: null },
     images: { type: [productImageSchema], default: [] },
+    shades: { type: [productShadeSchema], default: [] },
     stock: { type: Number, default: 0, min: 0 },
     isPublished: { type: Boolean, default: false, index: true },
     isFeatured: { type: Boolean, default: false },
@@ -49,6 +70,14 @@ const productSchema = new Schema<IProduct>(
   },
   { timestamps: true },
 );
+
+export function sellableShadeStock(shades: IProductShade[]): number {
+  return shades.reduce((sum, s) => sum + (s.isActive ? s.stock : 0), 0);
+}
+
+productSchema.pre("save", function () {
+  if (this.shades.length > 0) this.stock = sellableShadeStock(this.shades);
+});
 
 productSchema.index({ isPublished: 1, category: 1, createdAt: -1 });
 productSchema.index({ name: "text", brand: "text" });
